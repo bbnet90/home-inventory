@@ -1,0 +1,32 @@
+# Python bytecode and virtual envs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Build and package artifacts
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+
+# Local data and SQLite files
+data/*
+!data/.gitkeep
+*.db
+*.sqlite3
+*.sqlite
+*.db-journal
+
+# Local environment files
+.env
+.env.*
+
+# Editor / IDE settings
+.vscode/
+.idea/
+.DS_Store
