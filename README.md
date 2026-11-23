@@ -48,13 +48,13 @@ home-inventory/
 
 ## Local database location
 
-The default SQLite file is intentionally kept local to the project data directory and is ignored by Git:
+The SQLite file is always local and is ignored by Git. The location is chosen in this order:
 
-```text
-~/projects/home-inventory/data/home_inventory.db
-```
+1. `$HOME_INVENTORY_DB`, if set (full path to the `.db` file).
+2. `<repo>/data/home_inventory.db` when running from a source checkout (for example `pip install -e .`).
+3. `~/.local/share/home-inventory/home_inventory.db` (or `$XDG_DATA_HOME/home-inventory/`) for a regular `pip install .`, so data is never written next to `site-packages`.
 
-This keeps the database out of version control while preserving a simple, reproducible developer workflow.
+Run `home-inventory status` to see which path is in use.
 
 ## Planned scope for v0.1
 
@@ -72,6 +72,13 @@ home-inventory show 1
 home-inventory update 1 --quantity 5 --location "desk/drawer-2"
 home-inventory remove 1
 ```
+
+Notes on behaviour:
+
+- `find` matches names case-insensitively and is Turkish-aware: `istanbul`, `ISTANBUL` and `İstanbul` all match each other (the dotted/dotless i family is treated as `i`). Diacritics are kept, so `sem` does not match `Şemsiye`.
+- `%` and `_` in a search term are matched literally, not as wildcards.
+- `update` cleans values like `add` does: text is trimmed, a blank `--condition` becomes `new`, and a blank `--category ""` or `--location ""` clears that field.
+- Give the item name either positionally or with `--name`, not both (unless they are identical).
 
 ## Architecture
 

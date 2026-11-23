@@ -8,6 +8,11 @@ from home_inventory.database.repositories import InventoryRepository
 from home_inventory.database.schema import ensure_schema
 
 
+DEFAULT_CONDITION = "new"
+# Largest value the SQLite INTEGER column can hold.
+MAX_QUANTITY = 2**63 - 1
+
+
 class InventoryService:
     """Business logic boundary for inventory operations."""
 
@@ -31,7 +36,23 @@ class InventoryService:
         numeric_quantity = int(quantity)
         if numeric_quantity < 0:
             raise ValueError("Item quantity cannot be negative.")
+        if numeric_quantity > MAX_QUANTITY:
+            raise ValueError(f"Item quantity is too large (maximum is {MAX_QUANTITY}).")
         return numeric_quantity
+
+    @staticmethod
+    def _clean_optional(value: object) -> str | None:
+        """Strip text; blank becomes None (used for category and location)."""
+        if value is None:
+            return None
+        return str(value).strip() or None
+
+    @staticmethod
+    def _clean_condition(value: object) -> str:
+        """Strip text; blank falls back to the default condition."""
+        if value is None:
+            return DEFAULT_CONDITION
+        return str(value).strip() or DEFAULT_CONDITION
 
     def create_item(
         self,
@@ -45,10 +66,10 @@ class InventoryService:
         cleaned_quantity = self._validate_quantity(quantity)
         return self.repository.create_item(
             name=cleaned_name,
-            category=category.strip() if category is not None and category.strip() else None,
-            location=location.strip() if location is not None and location.strip() else None,
+            category=self._clean_optional(category),
+            location=self._clean_optional(location),
             quantity=cleaned_quantity,
-            condition=(condition or "new").strip() or "new",
+            condition=self._clean_condition(condition),
         )
 
     def get_item(self, item_id: int) -> Item | None:
@@ -65,6 +86,13 @@ class InventoryService:
             fields["name"] = self._validate_name(str(fields["name"]))
         if "quantity" in fields:
             fields["quantity"] = self._validate_quantity(int(fields["quantity"]))
+        # Same cleaning as create_item, so update cannot store blank strings.
+        # A blank category/location clears the value (stored as NULL).
+        for key in ("category", "location"):
+            if key in fields:
+                fields[key] = self._clean_optional(fields[key])
+        if "condition" in fields:
+            fields["condition"] = self._clean_condition(fields["condition"])
         return self.repository.update_item(item_id, **fields)
 
     def delete_item(self, item_id: int) -> bool:

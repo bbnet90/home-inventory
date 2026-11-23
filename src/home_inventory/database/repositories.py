@@ -4,8 +4,9 @@ from pathlib import Path
 
 from home_inventory.config import settings
 from home_inventory.core.models import Item
-from home_inventory.database.connection import get_connection
+from home_inventory.database.connection import connection_scope
 from home_inventory.database.schema import ensure_schema
+from home_inventory.database.text import escape_like, fold_text
 
 
 class InventoryRepository:
@@ -46,7 +47,7 @@ class InventoryRepository:
                 condition=condition,
             )
 
-        with get_connection(self.database_path) as connection:
+        with connection_scope(self.database_path) as connection:
             cursor = connection.execute(
                 """
                 INSERT INTO items (name, category, location, quantity, condition, created_at, updated_at)
@@ -64,7 +65,7 @@ class InventoryRepository:
             return self._row_to_item(row)
 
     def get_item_by_id(self, item_id: int) -> Item | None:
-        with get_connection(self.database_path) as connection:
+        with connection_scope(self.database_path) as connection:
             row = connection.execute(
                 "SELECT * FROM items WHERE id = ?",
                 (item_id,),
@@ -74,7 +75,7 @@ class InventoryRepository:
             return self._row_to_item(row)
 
     def list_items(self) -> list[Item]:
-        with get_connection(self.database_path) as connection:
+        with connection_scope(self.database_path) as connection:
             rows = connection.execute(
                 "SELECT * FROM items ORDER BY id ASC"
             ).fetchall()
@@ -97,7 +98,7 @@ class InventoryRepository:
 
         values.append(item_id)
 
-        with get_connection(self.database_path) as connection:
+        with connection_scope(self.database_path) as connection:
             connection.execute(
                 f"UPDATE items SET {', '.join(assignments)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 values,
@@ -110,7 +111,7 @@ class InventoryRepository:
         return updated
 
     def delete_item(self, item_id: int) -> bool:
-        with get_connection(self.database_path) as connection:
+        with connection_scope(self.database_path) as connection:
             cursor = connection.execute("DELETE FROM items WHERE id = ?", (item_id,))
             connection.commit()
             return cursor.rowcount > 0
@@ -120,9 +121,10 @@ class InventoryRepository:
         if not term:
             return self.list_items()
 
-        with get_connection(self.database_path) as connection:
+        with connection_scope(self.database_path) as connection:
+            pattern = f"%{escape_like(fold_text(term))}%"
             rows = connection.execute(
-                "SELECT * FROM items WHERE LOWER(name) LIKE LOWER(?) ORDER BY id ASC",
-                (f"%{term}%",),
+                "SELECT * FROM items WHERE fold_text(name) LIKE ? ESCAPE '\\' ORDER BY id ASC",
+                (pattern,),
             ).fetchall()
             return [self._row_to_item(row) for row in rows]

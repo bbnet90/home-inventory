@@ -14,6 +14,20 @@ def _error(message: str) -> int:
     return 1
 
 
+def _bind(
+    parser: argparse.ArgumentParser,
+    handler: Callable[[argparse.Namespace, InventoryService | None], int],
+    service_factory: Callable[[], InventoryService] | None,
+) -> None:
+    """Attach a handler to a subcommand; the service is only built when it runs."""
+
+    def run(args: argparse.Namespace) -> int:
+        service = service_factory() if service_factory is not None else None
+        return handler(args, service)
+
+    parser.set_defaults(handler=run)
+
+
 def handle_status(_args: argparse.Namespace, _service: InventoryService | None = None) -> int:
     print(f"home-inventory {__version__}")
     print(f"database_path={settings.database_path}")
@@ -30,6 +44,8 @@ def handle_init_db(_args: argparse.Namespace, service: InventoryService | None =
 
 def handle_add(args: argparse.Namespace, service: InventoryService | None = None) -> int:
     active_service = service or InventoryService(settings.database_path)
+    if args.name and args.name_option and args.name.strip() != args.name_option.strip():
+        return _error("Provide the item name either positionally or with --name, not both.")
     name = args.name_option or args.name
     if not name:
         return _error("Item name is required.")
@@ -179,10 +195,11 @@ def build_parser(service_factory: Callable[[], InventoryService] | None = None) 
     subparsers = parser.add_subparsers(dest="command")
 
     status_parser = subparsers.add_parser("status", help="Show the current local configuration.")
-    status_parser.set_defaults(handler=lambda args: handle_status(args, service_factory())) if service_factory is not None else status_parser.set_defaults(handler=lambda args: handle_status(args))
+    # status only prints configuration, so it never builds a service (or touches the DB).
+    status_parser.set_defaults(handler=handle_status)
 
     init_db_parser = subparsers.add_parser("init-db", help="Create the local SQLite database and base schema.")
-    init_db_parser.set_defaults(handler=lambda args: handle_init_db(args, service_factory())) if service_factory is not None else init_db_parser.set_defaults(handler=lambda args: handle_init_db(args))
+    _bind(init_db_parser, handle_init_db, service_factory)
 
     add_parser = subparsers.add_parser("add", help="Add a new item.")
     add_parser.add_argument("name", nargs="?", help="Item name")
@@ -191,31 +208,34 @@ def build_parser(service_factory: Callable[[], InventoryService] | None = None) 
     add_parser.add_argument("--location")
     add_parser.add_argument("--quantity", type=int, default=1)
     add_parser.add_argument("--condition", default="new")
-    add_parser.set_defaults(handler=lambda args: handle_add(args, service_factory())) if service_factory is not None else add_parser.set_defaults(handler=lambda args: handle_add(args))
+    _bind(add_parser, handle_add, service_factory)
 
     find_parser = subparsers.add_parser("find", help="Search items by name.")
     find_parser.add_argument("query", help="Search term")
-    find_parser.set_defaults(handler=lambda args: handle_find(args, service_factory())) if service_factory is not None else find_parser.set_defaults(handler=lambda args: handle_find(args))
+    _bind(find_parser, handle_find, service_factory)
 
     list_parser = subparsers.add_parser("list", help="List all items.")
-    list_parser.set_defaults(handler=lambda args: handle_list(args, service_factory())) if service_factory is not None else list_parser.set_defaults(handler=lambda args: handle_list(args))
+    _bind(list_parser, handle_list, service_factory)
 
     show_parser = subparsers.add_parser("show", help="Show a single item.")
     show_parser.add_argument("item_id", help="Item ID")
-    show_parser.set_defaults(handler=lambda args: handle_show(args, service_factory())) if service_factory is not None else show_parser.set_defaults(handler=lambda args: handle_show(args))
+    _bind(show_parser, handle_show, service_factory)
 
-    update_parser = subparsers.add_parser("update", help="Update an item.")
+    update_parser = subparsers.add_parser(
+        "update",
+        help="Update an item (pass an empty --category/--location to clear it).",
+    )
     update_parser.add_argument("item_id", help="Item ID")
     update_parser.add_argument("--name")
     update_parser.add_argument("--category")
     update_parser.add_argument("--location")
     update_parser.add_argument("--quantity", type=int)
     update_parser.add_argument("--condition")
-    update_parser.set_defaults(handler=lambda args: handle_update(args, service_factory())) if service_factory is not None else update_parser.set_defaults(handler=lambda args: handle_update(args))
+    _bind(update_parser, handle_update, service_factory)
 
     remove_parser = subparsers.add_parser("remove", help="Remove an item.")
     remove_parser.add_argument("item_id", help="Item ID")
-    remove_parser.set_defaults(handler=lambda args: handle_remove(args, service_factory())) if service_factory is not None else remove_parser.set_defaults(handler=lambda args: handle_remove(args))
+    _bind(remove_parser, handle_remove, service_factory)
 
     return parser
 
