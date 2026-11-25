@@ -112,3 +112,9 @@ python -m home_inventory.cli.main status
 - Business logic stays out of CLI code.
 - SQLite access stays behind a database boundary.
 - Users and real data are not committed to source control.
+
+## command-center panel
+
+The inventory panel reads item and unit counts, depleted items, and the three
+newest additions. It resolves `HOME_INVENTORY_DB` on each call. Displaying it
+opens an existing database read-only and never initializes files or tables.
